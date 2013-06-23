@@ -19,16 +19,18 @@ class fussball():
 		self.game = None
 		self.cv = fussballcv()
 
-	def update(self):
-		self.cv.update()
+	def play(self):
+		status = 0
+		while status >= 0:
+			status = self.cv.update(self.ball)
 		#self.ball.update(self.cv.getballpos())
-
 
 class fussballcv():
 
 	def __init__(self, live = False, interactive = True):
 		self.live = live
 		self.interactive = interactive
+
 		if live:
 			self.cap = cv.CreateCameraCapture(0)
 		else:
@@ -41,30 +43,47 @@ class fussballcv():
 				print "Frame Height: " + str(cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_FRAME_HEIGHT  ))
 				print "FPS: " + str(cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_FPS  ))
 				print "FourCC: " + str(cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_FOURCC ))
+			frame = cv.QueryFrame(self.cap)
+
+		self.playmask = cv.LoadImage("Table.png")
+		self.polemask = cv.LoadImage("Poles.png")
+		self.linemask = cv.LoadImage("Lines.png")
+
+		# create some buffers
+		self.yuvframe = cv.CreateMat(frame.height, frame.width, cv.CV_8UC3)
+		self.imgThreshed = cv.CreateMat(frame.height, frame.width, cv.CV_8UC1)
+		self.imgDilated =  cv.CreateMat(frame.height, frame.width, cv.CV_8UC1)
+		self.maskedFrame = cv.CreateMat(frame.height, frame.width, cv.CV_8UC3)
+		self.storage = cv.CreateMemStorage(0)
+
+
 	def init_interactive(self):
 		cv.NamedWindow('Table', cv.CV_WINDOW_AUTOSIZE)
 		#cv.NamedWindow('h', cv.CV_WINDOW_AUTOSIZE)
 		cv.NamedWindow('s', cv.CV_WINDOW_AUTOSIZE)
 		#cv.NamedWindow('l', cv.CV_WINDOW_AUTOSIZE)
 
-	def dest_interactive(self):
+	def __del__(self):
 		cv.DestroyAllWindows()
 
-	def update(self):
+	def update(self, ball ):
 		key = -1
-		key = cv.WaitKey(5) # the window will be closed with a (any)key press
+		key = cv.WaitKey(5) # get user input
+
+
 		frame = cv.QueryFrame(self.cap)
-		bigblob = self.locateBlobs(frame)
+		if frame != None:
+			bigblob = self.locateBlobs(frame)
 
-			#minBallDiameter = 5
-		CV_RED = cv.Scalar(0,0,255)
-		if bigblob != None:
-			cv.Circle(frame, (int(bigblob[1][0]), int(bigblob[1][1])), int(bigblob[2]), CV_RED)
+				#minBallDiameter = 5
+			CV_RED = cv.Scalar(0,0,255)
+			if bigblob != None:
+				cv.Circle(frame, (int(bigblob[1][0]), int(bigblob[1][1])), int(bigblob[2]), CV_RED)
 
-		#if key == ord('s'):
-		#	saveFrame(frame)
+			#if key == ord('s'):
+			#	saveFrame(frame)
 
-		if key == 113 and self.interactive : # 'q'
+		if key == ord('q') and self.interactive : # 'q'
 			return -1
 		if key == ord('j') and not self.live and self.interactive :
 			cv.SetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES, cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES) + 400)
@@ -72,39 +91,38 @@ class fussballcv():
 			cv.SetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES, cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES) - 400)
 		if self.interactive:
 			cv.ShowImage('Table', frame) # show the image
-
+		return 0
 
 
 	def locateBlobs(self, frame):
 
 		#load mask
-		playmask = cv.LoadImage("mask.png")
-		maskedFrame = cv.CreateMat(frame.height, frame.width, cv.CV_8UC3)
-		cv.And(frame, playmask, maskedFrame )
+		cv.And(frame, self.playmask, self.maskedFrame ) # mask off play area
+		cv.And(self.maskedFrame, self.polemask, self.maskedFrame ) # mask off play area
+		cv.And(self.maskedFrame, self.linemask, self.maskedFrame ) # mask off play area
 
 		#gaussian blur
-		cv.Smooth(maskedFrame, maskedFrame, cv.CV_GAUSSIAN,3,3)
+		cv.Smooth(self.maskedFrame,self.maskedFrame, cv.CV_GAUSSIAN,3,3)
 
-		# create some buffers
-		yuvframe = cv.CreateMat(frame.height, frame.width, cv.CV_8UC3)
-		imgThreshed = cv.CreateMat(frame.height, frame.width, cv.CV_8UC1)
-		imgDilated =  cv.CreateMat(frame.height, frame.width, cv.CV_8UC1)
+
 
 		#imgContour =  cv.CreateMat(frame.height, frame.width, cv.CV_8UC1) # scratch space for findcontours
-		storage = cv.CreateMemStorage(0)
+
 
 		#convert to HLS colour space
-		cv.CvtColor(maskedFrame, yuvframe, cv.CV_RGB2HLS)
+		cv.CvtColor(self.maskedFrame, self.yuvframe, cv.CV_RGB2HLS)
 		# threshold on saturation being high
-		cv.InRangeS(maskedFrame, cv.Scalar(0, 0, 200), cv.Scalar(255, 255, 255), imgThreshed)
+		cv.InRangeS(self.maskedFrame, cv.Scalar(0, 0, 200), cv.Scalar(255, 255, 255), self.imgThreshed)
 
 
 		#dilate the Thresholded image
-		cv.Dilate(imgThreshed, imgDilated)
+		cv.Dilate(self.imgThreshed, self.imgDilated)
 
 		# copy dialated int
 		#cv.Copy(imgDilated, imgContour)
-		contours = cv.FindContours(imgDilated,  storage)
+		contours = cv.FindContours(self.imgDilated,  self.storage)
+
+
 
 		maxContour = None
 		maxContourArea = 0
@@ -127,14 +145,10 @@ class fussballcv():
 
 		# just return the biggest circle
 
-
-
-
 	def saveFrame(self, frame):
 		cv.SaveImage("template.png", frame)
 
 
 if __name__ == "__main__":
 	table = fussball()
-	while True:
-		table.update()
+	table.play()
