@@ -3,23 +3,67 @@
 import numpy as np
 import cv2
 import time
+import math
 #import sys
 
-
 class ball():
-    def __init__(self):
+    def __init__(self, size):
         self.x = 0
         self.y = 0
-        self.momentx = 0
-        self.momenty = 0
+        self.dx = 0
+        self.dy = 0
+        self.size = size
+        self.last_err = 0
+        self.last_update = None
 
-    def update(self, x,y):
-        self.x = x
-        self.y = y
+    def get_pos(self, now):
+        if self.last_update is None:
+            return (self.x, self.y)
+        dt = now - self.last_update
+        return (self.x + dt * self.dx, self.y + dt * self.dy)
+
+    def update(self, now, x, y, r):
+        if self.last_update is None:
+            self.x = x
+            self.y = y
+            self.last_update = now
+            self.last_err = abs(self.size - r)
+            return
+
+        # Calculate the predicted location
+        dt = now - self.last_update
+        pred_x = self.x + dt * self.dx
+        pred_y = self.y + dt * self.dy
+
+        # See how far that is from the actual location
+        err_x = pred_x - x
+        err_y = pred_y - y
+        # TODO: Maybe factor in dt? Maybe not.
+        pred_err_dist = math.sqrt(err_x * err_x + err_y * err_y)
+        # Use the observed ball size as a proxy for measurement accuracy
+        # If we only see a small [section of] ball then it's partially
+        # obscured, and probably not a very good guess.  All we really know
+        # is that the ball covers that area
+        new_err = abs(self.size - r)
+        if pred_err_dist < (self.last_err + new_err) * 1.5:
+            # We are reasonably close to the predicted location
+            # Make incremental adjustment to estimated velocity
+            # Todo factor in relative measurement errors
+            self.dx += err_x * 0.5 / dt
+            self.dy += err_y * 0.5 / dt
+            self.x += dt * self.dx
+            self.y += dt * self.dy
+        else:
+            # Not close to where we expected to be.  Start from scratch.
+            self.dx = (x - self.x) / dt
+            self.dy = (y - self.y) / dt
+            self.x = x
+            self.y = y
+        self.last_err = new_err
 
 class fussball():
     def __init__(self,  live = False, interactive = True):
-        self.ball = ball()
+        self.ball = ball(20)
         self.game = None
         self.cv = fussballcv( live, interactive)
 
@@ -27,7 +71,6 @@ class fussball():
         status = 0
         while status >= 0:
             status = self.cv.update(self.ball)
-        #self.ball.update(self.cv.getballpos())
 
 class fussballcv():
 
@@ -53,6 +96,7 @@ class fussballcv():
         self.polemask = cv2.imread("Poles.png")
         self.linemask = cv2.imread("Lines.png")
         self.all_mask = self.playmask & self.polemask #& self.linemask
+        self.frame_time = 0.0
 
     def find_mask_position(self, frame):
         cv2.matchTemplate(frame, self.all_mask, cv2.TM_SQDIFF_NORMED)
@@ -65,25 +109,36 @@ class fussballcv():
         cv2.NamedWindow('thresh', cv.CV_WINDOW_AUTOSIZE)
         #cv.NamedWindow('l', cv.CV_WINDOW_AUTOSIZE)
 
-    def update(self, ball ):
+    def update(self, ball):
         key = -1
         key = cv2.waitKey(20) # get user input
 
 
         t1 = time.time()
+        if self.live:
+            now = time.time()
+        else:
+            now = self.frame_time
+            self.frame_time += 1.0/60
         (retval, frame) = self.cap.read()
         if frame != None:
-            bigblob = self.locateBlobs(frame)
+            blob = self.locateBlobs(frame)
 
             #minBallDiameter = 5
             CV_RED = (0,0,255)
-            if bigblob != None:
-                cv2.circle(self.foo, (int(bigblob[0][0]), int(bigblob[0][1])), int(bigblob[1]), CV_RED)
-                cv2.circle(frame, (int(bigblob[0][0]), int(bigblob[0][1])), int(bigblob[1]), CV_RED)
-            #if key == ord('s'):
-            #        saveFrame(frame)
+            CV_GREEN = (0,255,0)
+            if blob != None:
+                pos = blob[0]
+                r = blob[1]
+                ball.update(now, pos[0], pos[1], r)
+                cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(r), CV_RED)
+                cv2.circle(frame, (int(pos[0]), int(pos[1])), int(r), CV_RED)
+            pos = ball.get_pos(now)
+            cv2.circle(frame, (int(pos[0]), int(pos[1])), int(ball.size), CV_GREEN);
         t2 = time.time()
 
+        #if key == ord('s'):
+        #        saveFrame(frame)
         if key == ord('q') and self.interactive : # 'q'
             return -1
         if key == ord('j') and not self.live and self.interactive :
