@@ -24,20 +24,21 @@ class ball():
 
     def update(self, now, x, y, r):
         if self.last_update is None:
+            self.last_update = now
             self.x = x
             self.y = y
-            self.last_update = now
             self.last_err = abs(self.size - r)
             return
 
         # Calculate the predicted location
         dt = now - self.last_update
+        self.last_update = now
         pred_x = self.x + dt * self.dx
         pred_y = self.y + dt * self.dy
 
         # See how far that is from the actual location
-        err_x = pred_x - x
-        err_y = pred_y - y
+        err_x = x - pred_x
+        err_y = y - pred_y
         # TODO: Maybe factor in dt? Maybe not.
         pred_err_dist = math.sqrt(err_x * err_x + err_y * err_y)
         # Use the observed ball size as a proxy for measurement accuracy
@@ -48,7 +49,7 @@ class ball():
         if pred_err_dist < (self.last_err + new_err) * 1.5:
             # We are reasonably close to the predicted location
             # Make incremental adjustment to estimated velocity
-            # Todo factor in relative measurement errors
+            # TODO: factor in relative measurement errors
             self.dx += err_x * 0.5 / dt
             self.dy += err_y * 0.5 / dt
             self.x += dt * self.dx
@@ -63,7 +64,7 @@ class ball():
 
 class fussball():
     def __init__(self,  live = False, interactive = True):
-        self.ball = ball(20)
+        self.ball = ball(10)
         self.game = None
         self.cv = fussballcv( live, interactive)
 
@@ -80,6 +81,8 @@ class fussballcv():
 
         if live:
             self.cap = cv2.VideoCapture(2)
+            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, 480)
         else:
             filename = 'out2.avi'
             self.cap = cv2.VideoCapture(filename)
@@ -135,6 +138,7 @@ class fussballcv():
                 cv2.circle(frame, (int(pos[0]), int(pos[1])), int(r), CV_RED)
             pos = ball.get_pos(now)
             cv2.circle(frame, (int(pos[0]), int(pos[1])), int(ball.size), CV_GREEN);
+            cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(ball.size), CV_GREEN, thickness=4);
         t2 = time.time()
 
         #if key == ord('s'):
@@ -203,5 +207,5 @@ class fussballcv():
 
 
 if __name__ == "__main__":
-    table = fussball( live = False, interactive = True)
+    table = fussball( live = True, interactive = True)
     table.play()
