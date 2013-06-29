@@ -6,6 +6,8 @@ import time
 import math
 #import sys
 
+record = False
+
 class ball():
     def __init__(self, size):
         self.x = 0
@@ -63,10 +65,10 @@ class ball():
         self.last_err = new_err
 
 class fussball():
-    def __init__(self,  live = False, interactive = True):
+    def __init__(self, res, live, interactive):
         self.ball = ball(10)
         self.game = None
-        self.cv = fussballcv( live, interactive)
+        self.cv = fussballcv(res, live, interactive)
 
     def play(self):
         status = 0
@@ -75,16 +77,19 @@ class fussball():
 
 class fussballcv():
 
-    def __init__(self, live = False, interactive = True):
+    def __init__(self, res, live, interactive):
         self.live = live
         self.interactive = interactive
+        self.res = res
 
+        self.need_resize = False
         if live:
-            self.cap = cv2.VideoCapture(2)
-            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, 480)
+            self.cap = cv2.VideoCapture(0)
+            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, res[0])
+            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, res[1])
+            #self.cap.set(cv2.cv.CV_CAP_PROP_FPS, 10)
         else:
-            filename = 'out2.avi'
+            filename = 'in.avi'
             self.cap = cv2.VideoCapture(filename)
             if not self.cap  :
                 raise "file load fail!"
@@ -93,12 +98,20 @@ class fussballcv():
                 print "Frame Height: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT  ))
                 print "FPS: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_FPS  ))
                 print "FourCC: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_FOURCC ))
-            (retval, frame) = self.cap.read()
+                if res[0] != int(self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)):
+                    self.need_resize = True
+                if res[1] != int(self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)):
+                    self.need_resize = True
+
+        if record:
+            self.writer = cv2.VideoWriter("out.avi", cv2.cv.CV_FOURCC('M', 'J', 'P', 'G'), 30, res, True)
 
         self.playmask = cv2.imread("Table.png")
         self.polemask = cv2.imread("Poles.png")
-        self.linemask = cv2.imread("Lines.png")
-        self.all_mask = self.playmask & self.polemask #& self.linemask
+        # no need to make lines when we can do color matching on the ball
+        #self.linemask = cv2.imread("Lines.png")
+        self.all_mask = self.playmask & self.polemask
+        self.all_mask = cv2.resize(self.all_mask, res)
         self.frame_time = 0.0
 
     def find_mask_position(self, frame):
@@ -114,31 +127,40 @@ class fussballcv():
 
     def update(self, ball):
         key = -1
-        key = cv2.waitKey(20) # get user input
-
+        key = cv2.waitKey(1) # get user input
 
         t1 = time.time()
         if self.live:
             now = time.time()
+            print "Real: %2d" % int(1.0/(now - self.frame_time))
         else:
-            now = self.frame_time
-            self.frame_time += 1.0/60
+            now = self.frame_time + 1.0/60
+        self.frame_time = now;
         (retval, frame) = self.cap.read()
-        if frame != None:
-            blob = self.locateBlobs(frame)
+        if frame is None:
+            return -1
 
-            #minBallDiameter = 5
-            CV_RED = (0,0,255)
-            CV_GREEN = (0,255,0)
-            if blob != None:
-                pos = blob[0]
-                r = blob[1]
-                ball.update(now, pos[0], pos[1], r)
-                cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(r), CV_RED)
-                cv2.circle(frame, (int(pos[0]), int(pos[1])), int(r), CV_RED)
-            pos = ball.get_pos(now)
-            cv2.circle(frame, (int(pos[0]), int(pos[1])), int(ball.size), CV_GREEN);
-            cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(ball.size), CV_GREEN, thickness=4);
+        if self.need_resize:
+            frame = cv2.resize(frame, self.res)
+
+        blob = self.locateBlobs(frame)
+
+        #minBallDiameter = 5
+        CV_RED = (0,0,255)
+        CV_GREEN = (0,255,0)
+        if blob != None:
+            pos = blob[0]
+            r = blob[1]
+            ball.update(now, pos[0], pos[1], r)
+            cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(r), CV_RED)
+            cv2.circle(frame, (int(pos[0]), int(pos[1])), int(r), CV_RED)
+        (x, y) = ball.get_pos(now)
+        x = int(x)
+        y = int(y)
+        #cv2.circle(frame, (x, y), int(ball.size), CV_GREEN, thickness=2);
+        x2 = x + int(ball.dx/5)
+        y2 = y + int(ball.dy/5)
+        cv2.line(frame, (x, y), (x2, y2), CV_GREEN, thickness=2);
         t2 = time.time()
 
         #if key == ord('s'):
@@ -152,7 +174,9 @@ class fussballcv():
         if self.interactive:
             cv2.imshow('Table', frame) # show the image
             cv2.imshow('thresh', self.foo)
-        print 1/(t2 - t1)
+        if record:
+            self.writer.write(frame);
+        print "Virt: %d" % int(1.0/(t2 - t1))
         return 0
 
 
@@ -162,28 +186,33 @@ class fussballcv():
         maskedFrame = frame & self.all_mask;
 
         #gaussian blur
-        cv2.GaussianBlur(maskedFrame, (3, 3), 0, maskedFrame)
+        #cv2.GaussianBlur(maskedFrame, (3, 3), 0, maskedFrame)
 
 
         #convert to HLS colour space (slow, not currently used)
         #yuvframe = cv2.cvtColor(maskedFrame, cv2.COLOR_RGB2HLS)
         # threshold on saturation being high
 
-        low = np.array([0x80, 0x80, 0xb0], np.uint8)
+        # Would probably be more effective to transform into
+        # HSV color-space, but two RGB windows seems pretty
+        # effective, and probably about the same cost.
+        # A single RGB window covering both bright and dark orange
+        # ends up including too much other stuff.
+        low = np.array([0x60, 0x60, 0xb0], np.uint8)
+        mid1 = np.array([0xa0, 0xa0, 0xff], np.uint8)
+        mid2 = np.array([0x80, 0x80, 0xc0], np.uint8)
         high = np.array([0xcc, 0xdf, 0xff], np.uint8)
-        #low = np.array([200, 200, 200], np.uint8)
-        #high = np.array([255, 255, 255], np.uint8)
-        threshframe = cv2.inRange(maskedFrame, low, high)
+        mask1 = cv2.inRange(maskedFrame, low, mid1)
+        mask2 = cv2.inRange(maskedFrame, mid2, high)
+        threshframe = mask1 | mask2
         self.foo = threshframe.copy()
 
         #dilate the Thresholded image
-                        #cv2.dilate(threshframe, None, dst=threshframe)
-        cv2.erode(threshframe, None, dst=threshframe)
+        #cv2.dilate(threshframe, None, dst=threshframe)
+        #cv2.erode(threshframe, None, dst=threshframe)
         #self.t = threshframe.copy()
 
         contours, hierarchy = cv2.findContours(threshframe, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-
-
 
         maxContour = None
         maxContourArea = 0
@@ -204,8 +233,6 @@ class fussballcv():
     def saveFrame(self, frame):
         cv.imsave("template.png", frame)
 
-
-
 if __name__ == "__main__":
-    table = fussball( live = True, interactive = True)
+    table = fussball(res=(320, 240), live = False, interactive = True)
     table.play()
