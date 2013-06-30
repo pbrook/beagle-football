@@ -88,12 +88,30 @@ class fussballcv():
             self.cap = cv2.VideoCapture(0)
             self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, res[0])
             self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, res[1])
+            self.cam_fps = self.cap.get(cv2.cv.CV_CAP_PROP_FPS)
+            if self.cam_fps <= 0:
+                print "Calibrating camera..."
+                # The capture driver can take a few frames to settle down
+                for i in xrange(0, 5):
+                    (retval, frame) = self.cap.read()
+                # Figure out the frame rate
+                start = time.time()
+                frames = 0
+                while time.time() < start + 1.0:
+                    (retval, frame) = self.cap.read()
+                    frames += 1
+                # Round up
+                self.cam_fps = frames + 1
+            print "%d FPS" % self.cam_fps
+            self.cap_time = time.time()
+            self.buffer_frames = 0.0
         else:
             filename = 'in.avi'
             self.cap = cv2.VideoCapture(filename)
             if not self.cap  :
                 raise "file load fail!"
             else:
+                self.cam_fps = int(self.cap.get(cv2.cv.CV_CAP_PROP_FPS))
                 print "Frame: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_POS_FRAMES ))
                 print "Frame Height: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT  ))
                 print "FPS: " + str(self.cap.get(cv2.cv.CV_CAP_PROP_FPS  ))
@@ -133,26 +151,30 @@ class fussballcv():
         t1 = time.time()
         if self.live:
             now = time.time()
-            print "Real: %2d %f" % (int(1.0/(now - self.frame_time)), self.mark_time)
-        else:
-            now = self.frame_time + 1.0/60
+            # The capture driver seems to buffer several frames.
+            # We can't process them at full rate, causing frames to back up,
+            # and very high latency
+            # Hack round this by keeping track of how many frames we think the
+            # camera should have generated, and pull out any extras
+            self.buffer_frames += (now - self.cap_time) * self.cam_fps
+            slurp_frames = max(int(self.buffer_frames), 0)
+            self.buffer_frames -= slurp_frames + 1
+            if self.buffer_frames < -1.0:
+                self.buffer_frames = 0.0
+            for i in xrange(0, slurp_frames):
+                (retval, frame) = self.cap.read()
+            now = time.time()
+            self.cap_time = now;
+            print "Real: %2d %.2f" % (int(1.0/(now - self.frame_time)), self.mark_time)
+        else: # pre-recorded
+            now = self.frame_time + 1.0/self.cam_fps
+        (retval, frame) = self.cap.read()
         self.frame_time = now;
-        # The capture driver seems to buffer several frames.
-        # We can't process them at full rate, so we end up with fairly
-        # horrible latency.  Hack round this by pulling a couple of extra
-        # clear the backlog.  This limits our maimum frame rate, but
-        # shouldn't have any other undesirable effects
-        # TODO: Make a better guess based on how long it took to process the
-        # previous frame.
-        if self.live:
-            slurp_frames = 2
-        else:
-            slurp_frames = 0
-        for i in xrange(0, slurp_frames + 1):
-            (retval, frame) = self.cap.read()
+
         if frame is None:
             return -1
 
+            self.cap_time = now;
         if self.need_resize:
             frame = cv2.resize(frame, self.res)
 
@@ -253,5 +275,5 @@ class fussballcv():
         cv.imsave("template.png", frame)
 
 if __name__ == "__main__":
-    table = fussball(res=(320, 240), live = False, interactive = True)
+    table = fussball(res=(320, 240), live = True, interactive = True)
     table.play()
