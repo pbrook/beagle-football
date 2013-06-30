@@ -125,10 +125,10 @@ class fussballcv():
             self.writer = cv2.VideoWriter("out.avi", cv2.cv.CV_FOURCC('M', 'J', 'P', 'G'), 30, res, True)
 
         self.playmask = cv2.imread("Table.png")
-        self.polemask = cv2.imread("Poles.png")
-        # no need to make lines when we can do color matching on the ball
+        # no need to mask lines or poles when we can do color matching on the ball
+        #self.polemask = cv2.imread("Poles.png")
         #self.linemask = cv2.imread("Lines.png")
-        self.all_mask = self.playmask & self.polemask
+        self.all_mask = self.playmask
         self.all_mask = cv2.resize(self.all_mask, res)
         self.frame_time = 0.0
         self.mark_time = 0.0
@@ -238,10 +238,13 @@ class fussballcv():
         # effective, and probably about the same cost.
         # A single RGB window covering both bright and dark orange
         # ends up including too much other stuff.
-        low = np.array([0x60, 0x60, 0xb0], np.uint8)
-        mid1 = np.array([0xa0, 0xa0, 0xff], np.uint8)
-        mid2 = np.array([0x80, 0x80, 0xc0], np.uint8)
-        high = np.array([0xcc, 0xdf, 0xff], np.uint8)
+
+        # These values are calibrated for daylight (with floodlight)
+        # If adjusting for artificial light please preserve these valus
+        low = np.array([0x28, 0x50, 0xa0], np.uint8)
+        mid1 = np.array([0x50, 0x90, 0xff], np.uint8)
+        mid2 = np.array([0x30, 0x60, 0xd0], np.uint8)
+        high = np.array([0x60, 0xa0, 0xff], np.uint8)
         mask1 = cv2.inRange(maskedFrame, low, mid1)
         mask2 = cv2.inRange(maskedFrame, mid2, high)
         threshframe = mask1 | mask2
