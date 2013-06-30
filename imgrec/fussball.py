@@ -7,6 +7,7 @@ import math
 #import sys
 
 record = False
+display_mask = False
 
 class ball():
     def __init__(self, size):
@@ -86,8 +87,7 @@ class fussballcv():
         if live:
             self.cap = cv2.VideoCapture(0)
             self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, res[0])
-            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, res[1])
-            #self.cap.set(cv2.cv.CV_CAP_PROP_FPS, 10)
+            self.cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, res[1])
         else:
             filename = 'in.avi'
             self.cap = cv2.VideoCapture(filename)
@@ -113,6 +113,7 @@ class fussballcv():
         self.all_mask = self.playmask & self.polemask
         self.all_mask = cv2.resize(self.all_mask, res)
         self.frame_time = 0.0
+        self.mark_time = 0.0
 
     def find_mask_position(self, frame):
         cv2.matchTemplate(frame, self.all_mask, cv2.TM_SQDIFF_NORMED)
@@ -132,11 +133,23 @@ class fussballcv():
         t1 = time.time()
         if self.live:
             now = time.time()
-            print "Real: %2d" % int(1.0/(now - self.frame_time))
+            print "Real: %2d %f" % (int(1.0/(now - self.frame_time)), self.mark_time)
         else:
             now = self.frame_time + 1.0/60
         self.frame_time = now;
-        (retval, frame) = self.cap.read()
+        # The capture driver seems to buffer several frames.
+        # We can't process them at full rate, so we end up with fairly
+        # horrible latency.  Hack round this by pulling a couple of extra
+        # clear the backlog.  This limits our maimum frame rate, but
+        # shouldn't have any other undesirable effects
+        # TODO: Make a better guess based on how long it took to process the
+        # previous frame.
+        if self.live:
+            slurp_frames = 2
+        else:
+            slurp_frames = 0
+        for i in xrange(0, slurp_frames + 1):
+            (retval, frame) = self.cap.read()
         if frame is None:
             return -1
 
@@ -152,7 +165,6 @@ class fussballcv():
             pos = blob[0]
             r = blob[1]
             ball.update(now, pos[0], pos[1], r)
-            cv2.circle(self.foo, (int(pos[0]), int(pos[1])), int(r), CV_RED)
             cv2.circle(frame, (int(pos[0]), int(pos[1])), int(r), CV_RED)
         (x, y) = ball.get_pos(now)
         x = int(x)
@@ -165,6 +177,11 @@ class fussballcv():
 
         #if key == ord('s'):
         #        saveFrame(frame)
+        if key == ord(' '):
+            if self.mark_time < 100.0:
+                self.mark_time = self.frame_time
+            else:
+                self.mark_time = self.frame_time - self.mark_time
         if key == ord('q') and self.interactive : # 'q'
             return -1
         if key == ord('j') and not self.live and self.interactive :
@@ -173,7 +190,8 @@ class fussballcv():
             cv2.SetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES, cv.GetCaptureProperty(self.cap, cv.CV_CAP_PROP_POS_FRAMES) - 400)
         if self.interactive:
             cv2.imshow('Table', frame) # show the image
-            cv2.imshow('thresh', self.foo)
+            if display_mask:
+                cv2.imshow('thresh', self.foo)
         if record:
             self.writer.write(frame);
         print "Virt: %d" % int(1.0/(t2 - t1))
@@ -205,7 +223,8 @@ class fussballcv():
         mask1 = cv2.inRange(maskedFrame, low, mid1)
         mask2 = cv2.inRange(maskedFrame, mid2, high)
         threshframe = mask1 | mask2
-        self.foo = threshframe.copy()
+        if display_mask:
+            self.foo = threshframe.copy()
 
         #dilate the Thresholded image
         #cv2.dilate(threshframe, None, dst=threshframe)
