@@ -9,7 +9,7 @@ import math
 record = False
 display_mask = False
 
-class ball():
+class ball(object):
     def __init__(self, size):
         self.x = 0
         self.y = 0
@@ -65,7 +65,7 @@ class ball():
             self.y = y
         self.last_err = new_err
 
-class fussball():
+class fussball(object):
     def __init__(self, res, live, interactive):
         self.ball = ball(10)
         self.game = None
@@ -76,7 +76,7 @@ class fussball():
         while status >= 0:
             status = self.cv.update(self.ball)
 
-class fussballcv():
+class fussballcv(object):
 
     def __init__(self, res, live, interactive):
         self.live = live
