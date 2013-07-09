@@ -243,8 +243,8 @@ class fussballcv():
         # If adjusting for artificial light please preserve these valus
         low = np.array([0x28, 0x50, 0xa0], np.uint8)
         mid1 = np.array([0x50, 0x90, 0xff], np.uint8)
-        mid2 = np.array([0x30, 0x60, 0xd0], np.uint8)
-        high = np.array([0x60, 0xa0, 0xff], np.uint8)
+        mid2 = np.array([0x40, 0x60, 0xe0], np.uint8)
+        high = np.array([0xa0, 0xc0, 0xff], np.uint8)
         mask1 = cv2.inRange(maskedFrame, low, mid1)
         mask2 = cv2.inRange(maskedFrame, mid2, high)
         threshframe = mask1 | mask2
