@@ -9,7 +9,11 @@ import math
 record = False
 display_mask = False
 
-class ball(object):
+# How long it takes to raise the player for a kick
+# FIXME: probably too small for live play
+KICK_MIN_TIME = 0.2
+
+class Ball(object):
     def __init__(self, size):
         self.x = 0
         self.y = 0
@@ -65,23 +69,155 @@ class ball(object):
             self.y = y
         self.last_err = new_err
 
+SMALL_SPEED = 0.1
+def do_intercept(pos, vel, x):
+    if vel[0] < SMALL_SPEED:
+        return (None, None)
+    m = vel[1] / vel[0]
+    dx = x - pos[0]
+    dy = dx * m
+    y = pos[1] + dy
+    t = dx / vel[0]
+    return (y, t)
+
+# 26 - (0)red goal, (1)red defence, (2)blue attack, (3)red mid, (4)blue mid
+# (5)red attack, (6)blue defence, (7)blue goal - 294
+# We are blue
+red_goal_pos = 26
+pole_pos = [40, 74, 108, 143, 177, 212, 246, 280]
+blue_goal_pos = 296
+
+class StickController(object):
+    def __init__(self, ball, x, next_x):
+        self.ball = ball
+        self.x = x
+        self.center = 130
+        self.offset = 0
+        self.kick_zone = next_x + ball.size
+        self.down = True
+
+    def intercept(self, pos):
+        vel = (self.ball.dx, self.ball.dy)
+        (y, t) = do_intercept(pos, vel, self.x)
+        if y is None:
+            return y
+        return self.find_dy(y)
+
+    # Find the vertical delta between the requested position
+    # and our current position
+    def find_dy(self, y):
+        # TODO: Handle more than one player.
+        return y - (self.center + self.offset)
+
+    def lower(self):
+        self.down = True
+        # TODO: Motors
+        pass
+
+    def kick(self):
+        self.lower()
+
+    def lift(self):
+        self.down = False
+        # TODO: Motors
+        pass
+
+    def move(self, offset):
+        # TODO: Motors
+        if offset > self.center:
+            offset = self.center
+        elif offset < -self.center:
+            offset = -self.center
+        self.offset = offset
+
+    def move_block(self, x, y):
+        # Position ourselves between the ball and the middle of the goal
+        # TODO: Sometimes better to be in the ball's path
+        self.lower()
+        dx = x - blue_goal_pos
+        dy = y - self.center
+        my_dx = self.x - blue_goal_pos
+        my_y = self.center + my_dx * dy / dx
+        my_dy = self.find_dy(my_y)
+        self.move(self.offset + my_dy)
+
+    def update(self, now):
+        # Assumes we are playing towards negative x
+        dia = self.ball.size
+        (x, y) = self.ball.get_pos(now)
+        delta_y = self.find_dy(self.ball.y)
+        if x > self.x + dia:
+            print 'Behind'
+            # ball is behind us,  move out of the way
+            self.lift()
+            self.move(self.offset + delta_y)
+        elif x > self.x - (dia * 0.8):
+            # TODO: factor in the ball velocity
+            if abs(delta_y) < dia:
+                print 'Kick', self.x - x
+                # Ball immediately underneath us
+                self.kick()
+            else:
+                print 'Pass', int(delta_y), int(self.offset)
+        elif (self.ball.dx > 0) and (x >= self.kick_zone):
+            print 'Near', self.x - x, dia / 2
+            delta_y = self.intercept((x, y))
+            # line up with the ball trajectory
+            self.move(self.offset + delta_y)
+            if self.ball.dx * KICK_MIN_TIME > self.x - self.kick_zone:
+                # The ball is travelling quicky (< 1 second to prepare for a kick)
+                # Try to block it
+                self.lower()
+            else:
+                # Raise ready to kick
+                self.lift()
+        else:
+            # Ball moving away from us or far away
+            print 'Defend'
+            self.move_block(x, y)
+
+    def render(self, frame):
+        if self.down:
+            color = (0,0,255)
+        else:
+            color = (255,0,255)
+        cv2.circle(frame, (self.x, int(self.center + self.offset)), 4, thickness = 4, color=color)
+
 class fussball(object):
     def __init__(self, res, live, interactive):
-        self.ball = ball(10)
+        self.ball = Ball(10.0)
         self.game = None
-        self.cv = fussballcv(res, live, interactive)
+        self.stick = []
+        # Attack
+        self.stick.append(StickController(self.ball, pole_pos[2], pole_pos[1]))
+        # Midfield
+        self.stick.append(StickController(self.ball, pole_pos[4], pole_pos[3]))
+        # Goal
+        self.stick.append(StickController(self.ball, pole_pos[7], pole_pos[5]))
+        self.cv = ImgRec(res, live, interactive, self.render)
+
+    def render(self, frame):
+        for s in self.stick:
+            s.render(frame)
 
     def play(self):
         status = 0
         while status >= 0:
             status = self.cv.update(self.ball)
+            if self.cv.live:
+                now = time.time()
+            else:
+                now = self.cv.frame_time
+            for s in self.stick:
+                s.update(now)
 
-class fussballcv(object):
+class ImgRec(object):
 
-    def __init__(self, res, live, interactive):
+    def __init__(self, res, live, interactive, rendercb):
         self.live = live
         self.interactive = interactive
         self.res = res
+        self.rendercb = rendercb
 
         self.need_resize = False
         if live:
@@ -137,7 +273,6 @@ class fussballcv(object):
         cv2.matchTemplate(frame, self.all_mask, cv2.TM_SQDIFF_NORMED)
         pass
 
-
     def init_interactive(self):
         cv2.NamedWindow('Table', cv.CV_WINDOW_AUTOSIZE)
         #cv.NamedWindow('h', cv.CV_WINDOW_AUTOSIZE)
@@ -146,7 +281,7 @@ class fussballcv(object):
 
     def update(self, ball):
         key = -1
-        key = cv2.waitKey(1) # get user input
+        key = cv2.waitKey(500) # get user input
 
         t1 = time.time()
         if self.live:
@@ -165,7 +300,7 @@ class fussballcv(object):
                 (retval, frame) = self.cap.read()
             now = time.time()
             self.cap_time = now;
-            print "Real: %2d %.2f" % (int(1.0/(now - self.frame_time)), self.mark_time)
+            #print "Real: %2d %.2f" % (int(1.0/(now - self.frame_time)), self.mark_time)
         else: # pre-recorded
             now = self.frame_time + 1.0/self.cam_fps
         (retval, frame) = self.cap.read()
@@ -195,6 +330,7 @@ class fussballcv(object):
         x2 = x + int(ball.dx/5)
         y2 = y + int(ball.dy/5)
         cv2.line(frame, (x, y), (x2, y2), CV_GREEN, thickness=2);
+        self.rendercb(frame)
         t2 = time.time()
 
         #if key == ord('s'):
@@ -216,7 +352,7 @@ class fussballcv(object):
                 cv2.imshow('thresh', self.foo)
         if record:
             self.writer.write(frame);
-        print "Virt: %d" % int(1.0/(t2 - t1))
+        #print "Virt: %d" % int(1.0/(t2 - t1))
         return 0
 
 
@@ -278,5 +414,5 @@ class fussballcv(object):
         cv.imsave("template.png", frame)
 
 if __name__ == "__main__":
-    table = fussball(res=(320, 240), live = True, interactive = True)
+    table = fussball(res=(320, 240), live = False, interactive = True)
     table.play()
