@@ -12,10 +12,10 @@
 // r20 current input state
 // r21 current output state
 // r22 current idle task
-// r23.b0 encoder 0 position
-// r23.b1 encoder 1 position
-// r23.b2 encoder 2 position
-// r23.b3 raise position flags
+// r23.w0 encoder 0 position
+// r23.w2 encoder 1 position
+// r24.w0 encoder 2 position
+// r24.b2 raise position flags
 
 // A set of [pointer, count] 32-bit pairs
 // Zero pointer indicates end of list
@@ -26,8 +26,8 @@
 // Communication area offsets
 #define COM_SET_POS 0x00
 #define COM_RANGE 0x80
-#define COM_CURRENT_POS 0x84
-#define COM_INPUT_BITS 0x88
+#define COM_INPUT_BITS 0x84
+#define COM_CURRENT_POS 0x88 // 8 bytes
 
 #define PRU0_ARM_INTERRUPT 19
 #define PRU1_ARM_INTERRUPT 20
@@ -82,6 +82,8 @@
 #define ES_2AR t17
 #define ES_2BF t18
 #define ES_2BR t19
+
+#define ENCODER_STEP 0x40
 
 #define ENCODER0_BITA t4
 #define ENCODER0_BITB t5
@@ -188,6 +190,7 @@ START:
   mov r21, 0
   mov r22, selftest
   mov r23, 0
+  mov r24, 0
   sbco r23, CONST_PRUDRAM, COM_RANGE, 4
 
   // Schedule initial process
@@ -278,15 +281,15 @@ input_zero:
   //  r3 = -1 if bit0 changed and bit0 != bit1
   mov r3, 0
   qbbc half_quad_done, r2.bit0
-  mov r3, 1
+  mov r3, ENCODER_STEP
   qbbs half_quad_high, r20.bit0
-  mov r3, 1
+  mov r3, ENCODER_STEP
   qbbc half_quad_done, r20.bit1
-  sub r3, r3, 2
+  sub r3, r3, 2*ENCODER_STEP
   qba half_quad_done
 half_quad_high:
   qbbs half_quad_done, r20.bit1
-  sub r3, r3, 2
+  sub r3, r3, 2*ENCODER_STEP
 half_quad_done:
 .endm
 .macro do_quad
@@ -298,11 +301,14 @@ half_quad_done:
 .endm
 
   xor r2, r1, r20
-  do_quad r23.b0, ENCODER0_BITA, ENCODER0_BITB
-  do_quad r23.b1, ENCODER1_BITA, ENCODER1_BITB
-  do_quad r23.b2, ENCODER2_BITA, ENCODER2_BITB
-  sbco r23, CONST_PRUDRAM, COM_CURRENT_POS, 4
+  do_quad r23.w0, ENCODER0_BITA, ENCODER0_BITB
+  do_quad r23.w2, ENCODER1_BITA, ENCODER1_BITB
+  do_quad r24.w0, ENCODER2_BITA, ENCODER2_BITB
+  sbco r23.w0.b1, CONST_PRUDRAM, COM_CURRENT_POS, 1
+  sbco r23.w2.b1, CONST_PRUDRAM, COM_CURRENT_POS+1, 1
+  sbco r24.w0.b1, CONST_PRUDRAM, COM_CURRENT_POS+2, 1
 
+  // Invoke idle task
   jmp r22
 
 idle_end:
@@ -333,23 +339,6 @@ selftest:
   // TODO: Maybe calibrate motors one at a time
 calibrate:
   mov r21, 0
-  set r21.MOTOR0A_HF
-  set r21.MOTOR1A_HF
-  set r21.MOTOR2A_HF
-  set r21.MOTOR0A_LF
-  set r21.MOTOR1A_LF
-  set r21.MOTOR2A_LF
-  mov r22, calibrate_forward
-
-calibrate_forward:
-  call check_all_es
-  mov r0, MOTOR_LOW_MASK
-  and r0, r0, r21
-  qbne idle_end, r0, 0
-
-  debug 1
-  mov r23, 0xffffff
-  mov r21, 0
   set r21.MOTOR0A_HR
   set r21.MOTOR1A_HR
   set r21.MOTOR2A_HR
@@ -364,15 +353,36 @@ calibrate_backward:
   and r0, r0, r21
   qbne idle_end, r0, 0
 
+  debug 1
+  mov r23.w0, 0
+  mov r23.w2, 0
+  mov r24.w0, 0
+
+  mov r21, 0
+  set r21.MOTOR0A_HF
+  set r21.MOTOR1A_HF
+  set r21.MOTOR2A_HF
+  set r21.MOTOR0A_LF
+  set r21.MOTOR1A_LF
+  set r21.MOTOR2A_LF
+  mov r22, calibrate_forward
+
+calibrate_forward:
+  call check_all_es
+  mov r0, MOTOR_LOW_MASK
+  and r0, r0, r21
+  qbne idle_end, r0, 0
+
   // Now at home position. Calculate encoder range
-  mov r0, 0xffffff
-  sub r0, r0, r23
-  lsr r23.b0, r23.b0, 1
-  lsr r23.b1, r23.b0, 1
-  lsr r23.b2, r23.b0, 1
-  mov r23, 0x808080
-  sub r23, r23, r0
-  sbco r0, CONST_PRUDRAM, COM_RANGE, 4
+  lsr r23.w0, r23.w0, 1
+  sbco r23.w0.b1, CONST_PRUDRAM, COM_RANGE, 1
+  set r23.w0.t15
+  lsr r23.w2, r23.w2, 1
+  sbco r23.w2.b1, CONST_PRUDRAM, COM_RANGE+2, 1
+  set r23.w2.t15
+  lsr r24.w0, r24.w0, 1
+  sbco r24.w0.b1, CONST_PRUDRAM, COM_RANGE+3, 1
+  set r24.w0.t15
 
   debug 2
   mov r22, run
@@ -383,16 +393,16 @@ run:
   lbco r0, CONST_PRUDRAM, COM_SET_POS, 4
 
 .macro run_motor_pos
-.mparam posbyte, lf, lr, hf, hr
+.mparam newpos, curpos, lf, lr, hf, hr
   // TODO: add hysteresis on position detection
-  qbgt run_pos_gt, r0.posbyte, r23.posbyte
-  qblt run_pos_lt, r0.posbyte, r23.posbyte
+  qbgt run_pos_rev, newpos, curpos
+  qblt run_pos_fwd, newpos, curpos
   clr r21.hf
   clr r21.hr
   clr r21.lf
   clr r21.lr
   qba run_pos_done
-run_pos_lt:
+run_pos_rev:
   clr r21.hf
   clr r21.lf
   set r21.hr
@@ -400,7 +410,7 @@ run_pos_lt:
   qbbs run_pos_done, r1.hf
   set r21.lr
   qba run_pos_done
-run_pos_gt:
+run_pos_fwd:
   clr r21.hr
   clr r21.lr
   set r21.hf
@@ -417,7 +427,7 @@ run_pos_done:
   qbbs run_raise_done, r21.lr
   qbbs run_raise_stop_f, r21.hf
   qbbs run_raise_stop_r, r21.hr
-  qbbs run_raise_f, r23.b3.bitpos
+  qbbs run_raise_f, r24.b3.bitpos
   qbbc run_raise_done, r0.b3.bitpos
   set r21.hr
   set r21.lr
@@ -429,17 +439,17 @@ run_raise_f:
   qba run_raise_done
 run_raise_stop_f:
   clr r21.hf
-  set r23.b3.bitpos
+  set r24.b3.bitpos
   qba run_raise_done
 run_raise_stop_r:
   clr r21.hr
-  clr r23.b3.bitpos
+  clr r24.b3.bitpos
 run_raise_done:
 .endm
 
-  run_motor_pos b0, MOTOR0A_LF, MOTOR0A_LR, MOTOR0A_HF, MOTOR0A_HR
-  run_motor_pos b1, MOTOR1A_LF, MOTOR1A_LR, MOTOR1A_HF, MOTOR1A_HR
-  run_motor_pos b2, MOTOR2A_LF, MOTOR2A_LR, MOTOR2A_HF, MOTOR2A_HR
+  run_motor_pos r0.b0, r23.w0.b1, MOTOR0A_LF, MOTOR0A_LR, MOTOR0A_HF, MOTOR0A_HR
+  run_motor_pos r0.b1, r23.w1.b1, MOTOR1A_LF, MOTOR1A_LR, MOTOR1A_HF, MOTOR1A_HR
+  run_motor_pos r0.b2, r23.w2.b1, MOTOR2A_LF, MOTOR2A_LR, MOTOR2A_HF, MOTOR2A_HR
   run_motor_raise t0, MOTOR0B_LF, MOTOR0B_LR, MOTOR0B_HF, MOTOR0B_HR
   run_motor_raise t1, MOTOR1B_LF, MOTOR1B_LR, MOTOR1B_HF, MOTOR1B_HR
   run_motor_raise t2, MOTOR2B_LF, MOTOR2B_LR, MOTOR2B_HF, MOTOR2B_HR
