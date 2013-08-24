@@ -51,9 +51,9 @@
 #define INPUT_CLK_PIN r30.t1
 #define INPUT_LATCH_PIN r30.t2
 #define INPUT_DATA_PIN r31.t8
-#define OUTPUT_CLK_PIN r31.t3
-#define OUTPUT_LATCH_PIN r31.t4
-#define OUTPUT_DATA_PIN r31.t5
+#define OUTPUT_CLK_PIN r30.t3
+#define OUTPUT_LATCH_PIN r30.t4
+#define OUTPUT_DATA_PIN r30.t5
 
 // Clock frequency for input shift registers
 // 200/(100 * 2) = 1 MHz
@@ -90,33 +90,38 @@
 #define ENCODER2_BITA t20
 #define ENCODER2_BITB t21
 
+// MOTOR0A -> terminal 2
+// MOTOR0B -> terminal 3
+// MOTOR1A -> terminal 1
+// MOTOR1B -> terminal 0
 // Output bit numbers
+// Bit 0 is shifted out first
 #define MOTOR0A_HF t0
 #define MOTOR0A_HR t1
 #define MOTOR0B_HR t2
 #define MOTOR0B_HF t3
-#define MOTOR0A_LR t4
-#define MOTOR0A_LF t5
-#define MOTOR0B_LF t6
-#define MOTOR0B_LR t7
+#define MOTOR0A_LF t4
+#define MOTOR0A_LR t5
+#define MOTOR0B_LR t6
+#define MOTOR0B_LF t7
 
 #define MOTOR1A_HF t8
 #define MOTOR1A_HR t9
 #define MOTOR1B_HR t10
 #define MOTOR1B_HF t11
-#define MOTOR1A_LR t12
-#define MOTOR1A_LF t13
-#define MOTOR1B_LF t14
-#define MOTOR1B_LR t15
+#define MOTOR1A_LF t12
+#define MOTOR1A_LR t13
+#define MOTOR1B_LR t14
+#define MOTOR1B_LF t15
 
 #define MOTOR2A_HF t16
 #define MOTOR2A_HR t17
 #define MOTOR2B_HR t18
 #define MOTOR2B_HF t19
-#define MOTOR2A_LR t20
-#define MOTOR2A_LF t21
-#define MOTOR2B_LF t22
-#define MOTOR2B_LR t23
+#define MOTOR2A_LF t20
+#define MOTOR2A_LR t21
+#define MOTOR2B_LR t22
+#define MOTOR2B_LF t23
 
 #define MOTOR_LOW_MASK 0xf0f0f0
 
@@ -181,7 +186,7 @@ START:
   // Init globals
   mov r20, 0xffffff
   mov r21, 0
-  mov r22, calibrate
+  mov r22, selftest
   mov r23, 0
   sbco r23, CONST_PRUDRAM, COM_RANGE, 4
 
@@ -322,6 +327,8 @@ output_ready:
   set OUTPUT_LATCH_PIN
   qba dispatch
 
+selftest:
+  qba calibrate
 
   // TODO: Maybe calibrate motors one at a time
 calibrate:

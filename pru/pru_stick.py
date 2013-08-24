@@ -2,6 +2,7 @@
 
 import pypruss
 import struct
+import time
 
 event_nr = 1 # PRU1_ARM_INTERRUPT
 
@@ -40,6 +41,7 @@ while True:
     mon.poll(COM_RANGE)
     mon.poll(COM_CURRENT_POS)
     mon.poll(COM_INPUT_BITS)
+    time.sleep(1.0/1000)
 pypruss.wait_for_event(event_nr)
 pypruss.clear_event(event_nr)
 pypruss.pru_disable(0)				# Disable PRU 0, this is already done by the firmware
