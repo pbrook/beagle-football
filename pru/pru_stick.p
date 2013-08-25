@@ -16,6 +16,9 @@
 // r23.w2 encoder 1 position
 // r24.w0 encoder 2 position
 // r24.b2 raise position flags
+// r25.b0 last set position 0
+// r25.b1 last set position 1
+// r25.b2 last set position 2
 
 // A set of [pointer, count] 32-bit pairs
 // Zero pointer indicates end of list
@@ -393,10 +396,13 @@ run:
   lbco r0, CONST_PRUDRAM, COM_SET_POS, 4
 
 .macro run_motor_pos
-.mparam newpos, curpos, lf, lr, hf, hr
+.mparam posbyte, curpos, lf, lr, hf, hr
+  qbeq run_pos_stop, r25.posbyte, r0.posbyte
   // TODO: add hysteresis on position detection
-  qbgt run_pos_rev, newpos, curpos
-  qblt run_pos_fwd, newpos, curpos
+  qbgt run_pos_rev, r0.posbyte, curpos
+  qblt run_pos_fwd, r0.posbyte, curpos
+  mov r25.posbyte, r0.posbyte
+run_pos_stop:
   clr r21.hf
   clr r21.hr
   clr r21.lf
@@ -447,9 +453,9 @@ run_raise_stop_r:
 run_raise_done:
 .endm
 
-  run_motor_pos r0.b0, r23.w0.b1, MOTOR0A_LF, MOTOR0A_LR, MOTOR0A_HF, MOTOR0A_HR
-  run_motor_pos r0.b1, r23.w1.b1, MOTOR1A_LF, MOTOR1A_LR, MOTOR1A_HF, MOTOR1A_HR
-  run_motor_pos r0.b2, r23.w2.b1, MOTOR2A_LF, MOTOR2A_LR, MOTOR2A_HF, MOTOR2A_HR
+  run_motor_pos b0, r23.w0.b1, MOTOR0A_LF, MOTOR0A_LR, MOTOR0A_HF, MOTOR0A_HR
+  run_motor_pos b1, r23.w1.b1, MOTOR1A_LF, MOTOR1A_LR, MOTOR1A_HF, MOTOR1A_HR
+  run_motor_pos b2, r23.w2.b1, MOTOR2A_LF, MOTOR2A_LR, MOTOR2A_HF, MOTOR2A_HR
   run_motor_raise t0, MOTOR0B_LF, MOTOR0B_LR, MOTOR0B_HF, MOTOR0B_HR
   run_motor_raise t1, MOTOR1B_LF, MOTOR1B_LR, MOTOR1B_HF, MOTOR1B_HR
   run_motor_raise t2, MOTOR2B_LF, MOTOR2B_LR, MOTOR2B_HF, MOTOR2B_HR
