@@ -39,14 +39,15 @@ class PRUMonitor(object):
         pypruss.exit()
         self.data = None
 
-mon = PRUMonitor("./pru_stick.bin")
-mon.write32(COM_SET_POS, 0x808080)
-while True:
-    mon.poll(0xf0)
-    mon.poll(COM_RANGE)
-    mon.poll(COM_CURRENT_POS)
-    mon.poll(COM_INPUT_BITS)
-    time.sleep(1.0/1000)
-pypruss.wait_for_event(event_nr)
-pypruss.clear_event(event_nr)
-mon.stop()
+if __name__ == '__main__':
+    mon = PRUMonitor("./pru_stick.bin")
+    mon.write32(COM_SET_POS, 0x808080)
+    while True:
+        mon.poll(0xf0)
+        mon.poll(COM_RANGE)
+        mon.poll(COM_CURRENT_POS)
+        mon.poll(COM_INPUT_BITS)
+        time.sleep(1.0/1000)
+    pypruss.wait_for_event(event_nr)
+    pypruss.clear_event(event_nr)
+    mon.stop()
