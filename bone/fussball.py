@@ -88,7 +88,9 @@ red_goal_pos = 26
 pole_pos = [40, 74, 108, 143, 177, 212, 246, 280]
 # Goal, Midfield, Attack
 # TODO: Midfeld values are wrong
+# Maximum (absolute) stick offset
 stick_limit = [24, 24, 24]
+# Offset at which player regions overlap
 stick_player_spacing = [22, 22, 22]
 blue_goal_pos = 296
 
@@ -141,6 +143,7 @@ class StickController(object):
         self.center = 130
         self.offset = 0
         self.limit = stick_limit[stick_num]
+        self.spacing = stick_player_spacing[stick_num]
         self.kick_zone = next_x + ball.size
         self.down = True
         self.pd = pd
@@ -156,8 +159,18 @@ class StickController(object):
     # Find the vertical delta between the requested position
     # and our current position
     def find_dy(self, y):
-        # TODO: Handle more than one player.
-        return y - (self.center + self.offset)
+        dy = y - (self.center + self.offset)
+        # Select the nearest player
+        while dy > self.spacing:
+            dy -= self.spacing * 2
+        while dy < self.spacing:
+            dy += self.spacing * 2
+        # Check we have enough range to get there
+        if self.offset + dy > self.limit:
+            dy -= self.spacing * 2
+        elif self.offset + dy < -self.limit:
+            dy += self.spacing * 2
+        return dy
 
     def rotate(self, down):
         self.down = down
@@ -225,7 +238,10 @@ class StickController(object):
         else:
             # Ball moving away from us or far away
             print 'Defend'
-            self.move_block(x, y)
+            # For simplicity, just line up with the ball
+            #self.move_block(x, y)
+            self.lower()
+            self.move(self.offset + delta_y)
 
     def render(self, frame):
         if self.down:
