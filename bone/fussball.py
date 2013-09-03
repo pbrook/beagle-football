@@ -6,6 +6,8 @@ import time
 import math
 #import sys
 
+import pru_stick
+
 record = False
 display_mask = False
 
@@ -85,16 +87,53 @@ def do_intercept(pos, vel, x):
 # We are blue
 red_goal_pos = 26
 pole_pos = [40, 74, 108, 143, 177, 212, 246, 280]
+# Goal, Midfield, Attack
+# TODO: Midfeld values are wrong
+stick_limit = [24, 24, 24]
+stick_player_spacing = [22, 22, 22]
 blue_goal_pos = 296
 
+class PRUDriver(object):
+    def __init__(self, mon):
+        self.mon = mon
+        self.set_pos = [0.0]*3
+        self.pos_range = [0]*3
+        self.mode = 0
+
+    def set_pos(self, n, pos):
+        if (n < 0) or (n > 2):
+            return
+        self.set_pos = pos;
+
+    def check_init(self):
+        val = self.mon.poll(pru_stick.COM_RANGE)
+        self.mode = val >> 24
+        if self.mode == 2:
+            self.pos_range[0] = val & 0xff
+            self.pos_range[1] = (val >> 8) & 0xff
+            self.pos_range[2] = (val >> 12) & 0xff
+
+    def sync(self):
+        if self.mode != 2:
+            self.check_init()
+            return
+        newpos = 0
+        for n in xrange(0, 3):
+            b = int(self.set_pos[n] * self.pos_range[n]) + 0x80
+            newpos |= b << (n * 8)
+        self.mon.write32(pru_stick.COM_SET_POS, newpos)
+
 class StickController(object):
-    def __init__(self, ball, x, next_x):
+    def __init__(self, pd, stick_num, ball, x, next_x):
         self.ball = ball
         self.x = x
         self.center = 130
         self.offset = 0
+        self.limit = stick_limit[stick_num]
         self.kick_zone = next_x + ball.size
         self.down = True
+        self.pd = pd
+        self.stick_num = stick_num
 
     def intercept(self, pos):
         vel = (self.ball.dx, self.ball.dy)
@@ -124,11 +163,12 @@ class StickController(object):
 
     def move(self, offset):
         # TODO: Motors
-        if offset > self.center:
-            offset = self.center
-        elif offset < -self.center:
-            offset = -self.center
+        if offset > self.limit:
+            offset = self.limit
+        elif offset < -self.limit:
+            offset = -self.limit
         self.offset = offset
+        self.pd.set_pos(self.stick_num, offset / float(self.limit))
 
     def move_block(self, x, y):
         # Position ourselves between the ball and the middle of the goal
@@ -188,12 +228,14 @@ class fussball(object):
         self.ball = Ball(10.0)
         self.game = None
         self.stick = []
+        self.pru_mon = pru_stick.PRUMonitor("./pru_stick.bin")
+        self.pd = PRUDriver(self.pru_mon)
         # Attack
-        self.stick.append(StickController(self.ball, pole_pos[2], pole_pos[1]))
+        self.stick.append(StickController(self.pd, 2, self.ball, pole_pos[2], pole_pos[1]))
         # Midfield
-        self.stick.append(StickController(self.ball, pole_pos[4], pole_pos[3]))
+        self.stick.append(StickController(self.pd, 1, self.ball, pole_pos[4], pole_pos[3]))
         # Goal
-        self.stick.append(StickController(self.ball, pole_pos[7], pole_pos[5]))
+        self.stick.append(StickController(self.pd, 0, self.ball, pole_pos[7], pole_pos[5]))
         self.cv = ImgRec(res, live, interactive, self.render)
 
     def render(self, frame):
