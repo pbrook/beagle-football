@@ -499,5 +499,5 @@ class ImgRec(object):
         cv.imsave("template.png", frame)
 
 if __name__ == "__main__":
-    table = fussball(res=(320, 240), live = False, interactive = True)
+    table = fussball(res=(320, 240), live = True, interactive = True)
     table.play()
