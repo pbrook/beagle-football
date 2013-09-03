@@ -70,7 +70,7 @@ class Ball(object):
             self.y = y
         self.last_err = new_err
 
-SMALL_SPEED = 0.1
+SMALL_SPEED = 1
 def do_intercept(pos, vel, x):
     if vel[0] < SMALL_SPEED:
         return (None, None)
@@ -224,10 +224,14 @@ class StickController(object):
             else:
                 print 'Pass', int(delta_y), int(self.offset)
         elif (self.ball.dx > 0) and (x >= self.kick_zone):
-            print 'Near', self.x - x, dia / 2
-            delta_y = self.intercept((x, y))
+            inter_dy = self.intercept((x, y))
             # line up with the ball trajectory
-            self.move(self.offset + delta_y)
+            if inter_dy is None:
+                print 'Slow intercept'
+                inter_dy = delta_y
+            else:
+                print 'Intercept'
+            self.move(self.offset + inter_dy)
             if self.ball.dx * KICK_MIN_TIME > self.x - self.kick_zone:
                 # The ball is travelling quicky
                 # Try to block it
@@ -350,7 +354,7 @@ class ImgRec(object):
 
     def update(self, ball):
         key = -1
-        key = cv2.waitKey(500) # get user input
+        key = cv2.waitKey(5) # get user input
 
         t1 = time.time()
         if self.live:
