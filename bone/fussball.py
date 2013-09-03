@@ -93,6 +93,7 @@ stick_limit = [24, 24, 24]
 # Offset at which player regions overlap
 stick_player_spacing = [22, 22, 22]
 blue_goal_pos = 296
+table_center_y = 130
 
 class PRUDriver(object):
     def __init__(self, mon):
@@ -140,7 +141,7 @@ class StickController(object):
     def __init__(self, pd, stick_num, ball, x, next_x):
         self.ball = ball
         self.x = x
-        self.center = 130
+        self.center = table_center_y
         self.offset = 0
         self.limit = stick_limit[stick_num]
         self.spacing = stick_player_spacing[stick_num]
@@ -253,6 +254,15 @@ class StickController(object):
         else:
             color = (255,0,255)
         cv2.circle(frame, (self.x, int(self.center + self.offset)), 4, thickness = 4, color=color)
+        # Calibration lines for table position
+        CV_BLUE = (255,0, 0)
+        cv2.line(frame, (self.x, self.center - self.spacing * 2),
+                (self.x, self.center + self.spacing * 2),
+                CV_BLUE, thickness=1)
+        cv2.line(frame, (int(self.kick_zone), self.center),
+                (self.x, self.center),
+                CV_BLUE, thickness=1)
+
 
 class fussball(object):
     def __init__(self, res, live, interactive):
@@ -391,6 +401,7 @@ class ImgRec(object):
         #minBallDiameter = 5
         CV_RED = (0,0,255)
         CV_GREEN = (0,255,0)
+        CV_BLUE = (255,0, 0)
         if blob != None:
             pos = blob[0]
             r = blob[1]
@@ -402,7 +413,8 @@ class ImgRec(object):
         #cv2.circle(frame, (x, y), int(ball.size), CV_GREEN, thickness=2);
         x2 = x + int(ball.dx/5)
         y2 = y + int(ball.dy/5)
-        cv2.line(frame, (x, y), (x2, y2), CV_GREEN, thickness=2);
+        cv2.line(frame, (x, y), (x2, y2), CV_GREEN, thickness=2)
+
         self.rendercb(frame)
         t2 = time.time()
 
