@@ -71,10 +71,10 @@
 #define INPUT_NUM_BITS t24
 
 // Input bit numbers
-#define ES_0AF t0
-#define ES_0AR t1
-#define ES_0BF t2
-#define ES_0BR t3
+#define ES_0AF t0 // Towards table
+#define ES_0AR t1 // Away from table
+#define ES_0BF t2 // Down (white)
+#define ES_0BR t3 // Up (pink)
 
 #define ES_1AF t8
 #define ES_1AR t9
