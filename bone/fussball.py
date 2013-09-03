@@ -12,8 +12,7 @@ record = False
 display_mask = False
 
 # How long it takes to raise the player for a kick
-# FIXME: probably too small for live play
-KICK_MIN_TIME = 0.2
+KICK_MIN_TIME = 0.5
 
 class Ball(object):
     def __init__(self, size):
@@ -96,14 +95,24 @@ blue_goal_pos = 296
 class PRUDriver(object):
     def __init__(self, mon):
         self.mon = mon
-        self.set_pos = [0.0]*3
+        self.cur_set_pos = [0.0]*3
+        self.cur_rot = [True]*3
         self.pos_range = [0]*3
         self.mode = 0
+
+    def set_rot(self, n, down):
+        if (n < 0) or (n > 2):
+            return
+        self.cur_rot[n] = down
 
     def set_pos(self, n, pos):
         if (n < 0) or (n > 2):
             return
-        self.set_pos = pos;
+        if pos > 1.0:
+            pos = 1.0
+        elif pos < 0.0:
+            pos = 0.0
+        self.cur_set_pos[n] = pos;
 
     def check_init(self):
         val = self.mon.poll(pru_stick.COM_RANGE)
@@ -119,8 +128,10 @@ class PRUDriver(object):
             return
         newpos = 0
         for n in xrange(0, 3):
-            b = int(self.set_pos[n] * self.pos_range[n]) + 0x80
+            b = int(self.cur_set_pos[n] * self.pos_range[n]) + 0x80
             newpos |= b << (n * 8)
+            if self.cur_rot[n]:
+                newpos |= 1 << (24 + n)
         self.mon.write32(pru_stick.COM_SET_POS, newpos)
 
 class StickController(object):
@@ -148,21 +159,20 @@ class StickController(object):
         # TODO: Handle more than one player.
         return y - (self.center + self.offset)
 
+    def rotate(self, down):
+        self.down = down
+        self.pd.set_rot(self.stick_num, self.down)
+
     def lower(self):
-        self.down = True
-        # TODO: Motors
-        pass
+        self.rotate(True)
 
     def kick(self):
-        self.lower()
+        self.rotate(True)
 
     def lift(self):
-        self.down = False
-        # TODO: Motors
-        pass
+        self.rotate(False)
 
     def move(self, offset):
-        # TODO: Motors
         if offset > self.limit:
             offset = self.limit
         elif offset < -self.limit:
@@ -185,6 +195,7 @@ class StickController(object):
         # Assumes we are playing towards negative x
         dia = self.ball.size
         (x, y) = self.ball.get_pos(now)
+        # delta_y lines us up with the current ball position
         delta_y = self.find_dy(self.ball.y)
         if x > self.x + dia:
             print 'Behind'
@@ -205,7 +216,7 @@ class StickController(object):
             # line up with the ball trajectory
             self.move(self.offset + delta_y)
             if self.ball.dx * KICK_MIN_TIME > self.x - self.kick_zone:
-                # The ball is travelling quicky (< 1 second to prepare for a kick)
+                # The ball is travelling quicky
                 # Try to block it
                 self.lower()
             else:
