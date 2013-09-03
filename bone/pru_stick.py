@@ -21,6 +21,7 @@ class PRUMonitor(object):
         pypruss.pruintc_init()
         pypruss.pru_disable(1)
         self.data = pypruss.map_prumem(pypruss.PRUSS0_PRU1_DATARAM)
+        self.write32(COM_RANGE, 0)
         pypruss.exec_program(1, prog)
 
     def read32(self, offset):
