@@ -359,6 +359,8 @@ calibrate_backward:
   qbne idle_end, r0, 0
 
   debug 1
+  mov r0.b0, 1
+  sbco r0.b0, CONST_PRUDRAM, COM_RANGE+3, 1
   mov r23.w0, 0
   mov r23.w2, 0
   mov r24.w0, 0
@@ -383,11 +385,13 @@ calibrate_forward:
   sbco r23.w0.b1, CONST_PRUDRAM, COM_RANGE, 1
   set r23.w0.t15
   lsr r23.w2, r23.w2, 1
-  sbco r23.w2.b1, CONST_PRUDRAM, COM_RANGE+2, 1
+  sbco r23.w2.b1, CONST_PRUDRAM, COM_RANGE+1, 1
   set r23.w2.t15
   lsr r24.w0, r24.w0, 1
-  sbco r24.w0.b1, CONST_PRUDRAM, COM_RANGE+3, 1
+  sbco r24.w0.b1, CONST_PRUDRAM, COM_RANGE+2, 1
   set r24.w0.t15
+  mov r0.b0, 2
+  sbco r0.b0, CONST_PRUDRAM, COM_RANGE+3, 1
 
   debug 2
   mov r22, run
