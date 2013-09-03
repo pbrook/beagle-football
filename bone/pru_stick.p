@@ -194,6 +194,7 @@ START:
   mov r22, selftest
   mov r23, 0
   mov r24, 0
+  mov r25, 0
   sbco r23, CONST_PRUDRAM, COM_RANGE, 4
   mov r0, 0x808080
   sbco r0, CONST_PRUDRAM, COM_SET_POS, 4

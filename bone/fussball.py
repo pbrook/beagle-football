@@ -113,8 +113,8 @@ class PRUDriver(object):
             return
         if pos > 1.0:
             pos = 1.0
-        elif pos < 0.0:
-            pos = 0.0
+        elif pos < -1.0:
+            pos = -1.0
         self.cur_set_pos[n] = pos;
 
     def check_init(self):
@@ -131,7 +131,7 @@ class PRUDriver(object):
             return
         newpos = 0
         for n in xrange(0, 3):
-            b = int(self.cur_set_pos[n] * self.pos_range[n]) + 0x80
+            b = int(-self.cur_set_pos[n] * self.pos_range[n]) + 0x80
             newpos |= b << (n * 8)
             if self.cur_rot[n]:
                 newpos |= 1 << (24 + n)
@@ -164,7 +164,7 @@ class StickController(object):
         # Select the nearest player
         while dy > self.spacing:
             dy -= self.spacing * 2
-        while dy < self.spacing:
+        while dy < -self.spacing:
             dy += self.spacing * 2
         # Check we have enough range to get there
         if self.offset + dy > self.limit:
@@ -293,6 +293,7 @@ class fussball(object):
                 now = self.cv.frame_time
             for s in self.stick:
                 s.update(now)
+            self.pd.sync()
 
 class ImgRec(object):
 
